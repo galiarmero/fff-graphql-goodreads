@@ -9,17 +9,23 @@ const {
     GraphQLList
 } = require('graphql')
 
+const GOODREADS_API_KEY = 'AReaGWL0Ka51bezD45OvzQ'
+
 const BookType = new GraphQLObjectType({
     name: 'Book',
     description: '...',
     fields: () => ({
+        id: {
+            type: GraphQLString,
+            resolve: (xml) => xml.GoodreadsResponse.book[0].id[0]
+        },
         title: {
             type: GraphQLString,
-            resolve: (book) => book.title[0]
+            resolve: (xml) => xml.GoodreadsResponse.book[0].title[0]
         },
         isbn: {
             type: GraphQLString,
-            resolve: (book) => book.isbn[0].$ ? null : book.isbn[0]
+            resolve: (xml) => xml.GoodreadsResponse.book[0].isbn[0]
         }
     })
 })
@@ -34,7 +40,19 @@ const AuthorType = new GraphQLObjectType({
         },
         books: {
             type: GraphQLList(BookType),
-            resolve: (xml) => xml.GoodreadsResponse.author[0].books[0].book
+            args: {
+                id: { type: GraphQLInt }
+            },
+            resolve: (xml, args) => {
+                const ids = args.id
+                            ? [args.id]
+                            : xml.GoodreadsResponse.author[0].books[0].book.map(book => book.id[0]._)
+                return Promise.all(ids.map(id => 
+                    fetch(`https://www.goodreads.com/book/show/${id}.xml?key=${GOODREADS_API_KEY}`)
+                        .then(response => response.text())
+                        .then(parseXml)
+                ))
+            }
         },
         fansCount: {
             type: GraphQLString,
@@ -54,7 +72,7 @@ module.exports = new GraphQLSchema({
                     id: { type: GraphQLInt }
                 },
                 resolve: (root, args) => fetch(
-                    `https://www.goodreads.com/author/show.xml?id=${args.id}&key=AReaGWL0Ka51bezD45OvzQ`
+                    `https://www.goodreads.com/author/show.xml?id=${args.id}&key=${GOODREADS_API_KEY}`
                 )
                 .then(response => response.text())
                 .then(parseXml)
