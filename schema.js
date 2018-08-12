@@ -1,6 +1,3 @@
-const fetch = require('node-fetch')
-const util = require('util')
-const parseXml = util.promisify(require('xml2js').parseString)
 const {
     GraphQLSchema,
     GraphQLObjectType,
@@ -8,8 +5,6 @@ const {
     GraphQLString,
     GraphQLList
 } = require('graphql')
-
-const GOODREADS_API_KEY = 'AReaGWL0Ka51bezD45OvzQ'
 
 const BookType = new GraphQLObjectType({
     name: 'Book',
@@ -26,6 +21,16 @@ const BookType = new GraphQLObjectType({
         isbn: {
             type: GraphQLString,
             resolve: (xml) => xml.GoodreadsResponse.book[0].isbn[0]
+        },
+        authors: {
+            type: GraphQLList(AuthorType),
+            resolve: (xml) => {
+                console.log(JSON.stringify(xml.GoodreadsResponse.book[0].authors[0].author))
+            },
+            resolve: (xml, args, context) => {
+                const authorIds = xml.GoodreadsResponse.book[0].authors[0].author.map(a => a.id[0])
+                return context.authorLoader.loadMany(authorIds)
+            }
         }
     })
 })
@@ -43,15 +48,11 @@ const AuthorType = new GraphQLObjectType({
             args: {
                 id: { type: GraphQLInt }
             },
-            resolve: (xml, args) => {
+            resolve: (xml, args, context) => {
                 const ids = args.id
                             ? [args.id]
                             : xml.GoodreadsResponse.author[0].books[0].book.map(book => book.id[0]._)
-                return Promise.all(ids.map(id => 
-                    fetch(`https://www.goodreads.com/book/show/${id}.xml?key=${GOODREADS_API_KEY}`)
-                        .then(response => response.text())
-                        .then(parseXml)
-                ))
+                return context.bookLoader.loadMany(ids)
             }
         },
         fansCount: {
@@ -71,11 +72,7 @@ module.exports = new GraphQLSchema({
                 args: {
                     id: { type: GraphQLInt }
                 },
-                resolve: (root, args) => fetch(
-                    `https://www.goodreads.com/author/show.xml?id=${args.id}&key=${GOODREADS_API_KEY}`
-                )
-                .then(response => response.text())
-                .then(parseXml)
+                resolve: (root, args, context) => context.authorLoader.load(args.id)
             }
         })
     })
